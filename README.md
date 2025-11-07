@@ -229,7 +229,7 @@ println!("e^0.5 ≈ {}", e_to_half.to_f64_approx());
 | U256 | ~77 decimal digits | Fastest | 32 bytes | Embedded, simple fractions, zkVM-optimized |
 | U512 | ~154 decimal digits | Fast | 64 bytes | Embedded, zkVM-optimized **Recommended default** |
 | U1024 | ~308 decimal digits | Moderate | 128 bytes | High precision |
-| U2048+ | ~600+ decimal digits | Slower | 256+ bytes | Specialized applications (perfromance drops, num-bigint might be faster) |
+| U2048+ | ~600+ decimal digits | Slower | 256+ bytes | Specialized applications (performance drops, num-bigint might be faster) |
 
 ## Performance
 
