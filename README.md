@@ -146,7 +146,7 @@ let product = a.mul_reduced(&b);  // 1/2 (reduced)
 ### Generic Over Integer Width
 
 Choose the size that fits your precision and performance needs:
-Headsup: Perfromance decreases from U2048 onwards due to automatic wide types on overflow, fix coming soon. 
+Heads up: Performance decreases from U2048 onwards due to automatic wide types on overflow, fix coming soon. 
 ```rust
 use crypto_ratio::{Ratio, RatioU256, RatioU512, RatioU1024};
 use crypto_bigint::{U256, U512, U1024};

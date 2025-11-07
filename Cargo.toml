@@ -12,6 +12,13 @@ readme = "README.md"
 keywords = ["rational","bigint", "crypto", "risc0", "zkvm"]
 categories = ["algorithms", "mathematics", "cryptography", "no-std"]
 rust-version = "1.65"
+exclude = [
+    ".github/",
+    "target/",
+    "*.swp",
+    "*.swo",
+    "*~",
+]
 
 [lib]
 name = "crypto_ratio"
@@ -54,12 +61,4 @@ harness = false
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
-
-exclude = [
-    ".github/",
-    "target/",
-    "*.swp",
-    "*.swo",
-    "*~",
-]
 
