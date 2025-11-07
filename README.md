@@ -2,7 +2,8 @@
 
 [![Crates.io](https://img.shields.io/crates/v/crypto-ratio.svg)](https://crates.io/crates/crypto-ratio)
 [![Documentation](https://docs.rs/crypto-ratio/badge.svg)](https://docs.rs/crypto-ratio)
-[![License](https://img.shields.io/crates/l/crypto-ratio.svg)](LICENSE)
+[![License](https://img.shields.io/crates/l/crypto-ratio.svg)](LICENSE-MIT)
+[![License](https://img.shields.io/crates/l/crypto-ratio.svg)](LICENSE-APACHE)
 
 Rational number arithmetic using crypto-bigint [crypto-bigint](https://github.com/RustCrypto/crypto-bigint).
 
