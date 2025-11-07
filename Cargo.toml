@@ -1,0 +1,65 @@
+[package]
+name = "crypto-ratio"
+version = "0.1.0"
+edition = "2021"  
+authors = ["Torben Poguntke <sbcdn@pm.me>"]
+license = "MIT OR Apache-2.0"
+description = "Rational number arithmetic using crypto-bigint"
+documentation = "https://docs.rs/crypto-ratio"
+repository = "https://github.com/Sbcdn/crypto-ratio"
+homepage = "https://github.com/Sbcdn/crypto-ratio"
+readme = "README.md"
+keywords = ["rational", "ratio", "bigint", "crypto", "risc0", "zkvm"]
+categories = ["algorithms", "mathematics", "cryptography", "no-std"]
+rust-version = "1.65"
+
+[lib]
+name = "crypto_ratio"
+path = "src/lib.rs"
+
+[dependencies]
+crypto-bigint = { version = "0.5", default-features = false }
+
+[dev-dependencies]
+# For testing
+num-bigint = "0.4"
+num-rational = "0.4"
+num-integer = "0.1"
+
+# For benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[features]
+default = ["std"]
+std = ["crypto-bigint/alloc"]
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[profile.bench]
+opt-level = 3
+lto = true
+codegen-units = 1
+
+[[bench]]
+name = "ratio_benchmark_u512"
+harness = false
+
+[[bench]]
+name = "ratio_benchmarks_full"
+harness = false
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+
+exclude = [
+    ".github/",
+    "target/",
+    "*.swp",
+    "*.swo",
+    "*~",
+]
+
