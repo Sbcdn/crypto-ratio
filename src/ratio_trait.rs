@@ -139,6 +139,10 @@ pub trait RatioInteger: WideInteger {
 
     /// Multiply returning both low and high parts as `(low, high)`.
     fn mul_wide(&self, other: &Self) -> (Self, Self);
+
+    /// Multiply by a `u64` via a single-limb-width multiply (`O(limbs)`),
+    /// returning `(low, overflowed)`.
+    fn mul_wide_u64(&self, rhs: u64) -> (Self, bool);
 }
 
 /// Macro to implement WideInteger for a crypto-bigint type.
@@ -308,6 +312,14 @@ macro_rules! impl_ratio_integer {
             #[inline(always)]
             fn mul_wide(&self, other: &Self) -> (Self, Self) {
                 self.mul_wide(other)
+            }
+
+            #[inline(always)]
+            fn mul_wide_u64(&self, rhs: u64) -> (Self, bool) {
+                // crypto-bigint's `mul_wide` is generic over the rhs limb
+                // count; a U64 multiplier costs O(limbs), not O(limbs²).
+                let (lo, hi) = self.mul_wide(&U64::from_u64(rhs));
+                (lo, hi != U64::ZERO)
             }
         }
     };
