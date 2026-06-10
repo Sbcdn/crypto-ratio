@@ -108,3 +108,40 @@ fn mul_integer_operand_is_oracle_correct() {
         assert_eq!(to_num(&q), want, "mul(k, a) value (case {i})");
     }
 }
+
+/// `mul_u64`/`div_by_u64` (narrow multiply) must be bit-for-bit identical to
+/// the full-width `mul`/`div_by_uint` they replace, and value-correct vs
+/// num-rational. Nonzero numerators avoid the zero-sign canonicalisation edge
+/// (mul_u64 normalises 0 to non-negative; the full-width mul does not).
+#[test]
+fn scalar_mul_div_match_full_width_and_oracle() {
+    let mut rng = Rng(0x1357_9BDF_0246_8ACE);
+    for i in 0..20_000u64 {
+        let aw = (i % 4) as usize + 1;
+        let a = RatioU512::new_raw(rng.nonzero(aw), rng.nonzero(aw), i & 1 == 0);
+        let n = (rng.next() % 1_000_000) + 1;
+
+        // div_by_u64(n) == div_by_uint(from_u64(n))  (bitwise)
+        let d_fast = a.div_by_u64(n);
+        let d_full = a.div_by_uint(&U512::from_u64(n));
+        assert_eq!(
+            (&d_fast.numer, &d_fast.denom, d_fast.negative),
+            (&d_full.numer, &d_full.denom, d_full.negative),
+            "div_by_u64 != div_by_uint (case {i})"
+        );
+
+        // mul_u64(n) == mul(from_u64(n, 1))  (bitwise)
+        let m_fast = a.mul_u64(n);
+        let m_full = RatioU512::mul(&a, &RatioU512::from_u64(n, 1));
+        assert_eq!(
+            (&m_fast.numer, &m_fast.denom, m_fast.negative),
+            (&m_full.numer, &m_full.denom, m_full.negative),
+            "mul_u64 != mul (case {i})"
+        );
+
+        // value vs num-rational
+        let na = to_num(&a);
+        assert_eq!(to_num(&d_fast), &na / BigInt::from(n), "div_by_u64 value (case {i})");
+        assert_eq!(to_num(&m_fast), &na * BigInt::from(n), "mul_u64 value (case {i})");
+    }
+}

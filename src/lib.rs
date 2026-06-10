@@ -457,9 +457,8 @@ impl<T: RatioInteger> Ratio<T> {
         self.add_wide(other)
     }
 
-    /// Combine the precomputed cross-products of an unequal-denominator add
-    /// into `(ad ± bc) / bd` with the correct sign. Single source of truth
-    /// shared by [`add`](Ratio::add) and [`add_sub`](Ratio::add_sub).
+    /// `(ad ± bc) / bd` with the correct sign, from precomputed cross-products.
+    /// Shared by [`add`](Ratio::add) and [`add_sub`](Ratio::add_sub).
     #[inline(always)]
     fn combine_cross(self_neg: bool, other_neg: bool, ad: &T, bc: &T, bd: T) -> Self {
         let (numer, negative) = match (self_neg, other_neg) {
@@ -477,10 +476,9 @@ impl<T: RatioInteger> Ratio<T> {
         }
     }
 
-    /// Compute `(self + other, self - other)` in one shot, sharing the three
-    /// cross-multiplications. Bit-for-bit equivalent to
-    /// `(self.add(other), self.sub(other))` but does 3 wide-multiplies instead
-    /// of 6 when the denominators differ. Results are unreduced, like `add`.
+    /// `(self + other, self - other)`, sharing the three cross-multiplies:
+    /// 3 wide-multiplies instead of 6. Bit-for-bit equal to
+    /// `(self.add(other), self.sub(other))`; unreduced, like `add`.
     #[inline]
     pub fn add_sub(&self, other: &Self) -> (Self, Self) {
         // Sign of `-other`, matching `Ratio::neg` (zero keeps its sign).
@@ -631,9 +629,8 @@ impl<T: RatioInteger> Ratio<T> {
                 (self.clone(), other.clone())
             };
 
-        // Integer-operand fast path: when one denominator is 1, the
-        // denom×denom product is just the other denom — skip that wide-multiply
-        // (one full-width multiply instead of two). Bit-identical result.
+        // Integer operand (denom == 1): the denom product is just the other
+        // denom, so skip that wide-multiply.
         let self_denom_one = self_work.denom == T::ONE;
         let other_denom_one = other_work.denom == T::ONE;
         if self_denom_one || other_denom_one {
@@ -818,6 +815,41 @@ impl<T: RatioInteger> Ratio<T> {
             numer: self.numer.clone(),
             denom: bd,
             negative: self.negative,
+        }
+    }
+
+    /// Divide by a `u64` (scales the denominator) via a single-limb multiply.
+    /// Unreduced equivalent of `div_by_uint(&T::from_u64(n))`. Panics on
+    /// denominator overflow.
+    #[inline]
+    pub fn div_by_u64(&self, n: u64) -> Self {
+        debug_assert!(n != 0, "div_by_u64 by zero");
+        let (denom, overflow) = self.denom.mul_wide_u64(n);
+        if overflow {
+            panic!("denominator overflow in div_by_u64");
+        }
+        Self {
+            numer: self.numer.clone(),
+            denom,
+            negative: self.negative,
+        }
+    }
+
+    /// Multiply the numerator by a `u64` (denominator unchanged) via a
+    /// single-limb multiply. Unreduced: unlike `mul(&from_u64(n, 1))`, never
+    /// normalizes a large operand. Panics on numerator overflow.
+    #[inline]
+    pub fn mul_u64(&self, n: u64) -> Self {
+        let (numer, overflow) = self.numer.mul_wide_u64(n);
+        if overflow {
+            panic!("numerator overflow in mul_u64");
+        }
+        // Preserve the zero-is-non-negative invariant when n == 0.
+        let negative = self.negative && !numer.is_zero_bool();
+        Self {
+            numer,
+            denom: self.denom.clone(),
+            negative,
         }
     }
 
