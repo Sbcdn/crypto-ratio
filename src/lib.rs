@@ -451,23 +451,79 @@ impl<T: RatioInteger> Ratio<T> {
         let (bd, bd_hi) = self.denom.mul_wide(&other.denom);
 
         if ad_hi.is_zero_bool() && bc_hi.is_zero_bool() && bd_hi.is_zero_bool() {
-            let (numer, negative) = match (self.negative, other.negative) {
-                (false, false) => (ad.wrapping_add(&bc), false),
-                (true, true) => (ad.wrapping_add(&bc), true),
-                (false, true) if ad >= bc => (ad.wrapping_sub(&bc), false),
-                (false, true) => (bc.wrapping_sub(&ad), true),
-                (true, false) if bc >= ad => (bc.wrapping_sub(&ad), false),
-                (true, false) => (ad.wrapping_sub(&bc), true),
-            };
-
-            return Self {
-                numer,
-                denom: bd,
-                negative,
-            };
+            return Self::combine_cross(self.negative, other.negative, &ad, &bc, bd);
         }
 
         self.add_wide(other)
+    }
+
+    /// Combine the precomputed cross-products of an unequal-denominator add
+    /// into `(ad ± bc) / bd` with the correct sign. Single source of truth
+    /// shared by [`add`](Ratio::add) and [`add_sub`](Ratio::add_sub).
+    #[inline(always)]
+    fn combine_cross(self_neg: bool, other_neg: bool, ad: &T, bc: &T, bd: T) -> Self {
+        let (numer, negative) = match (self_neg, other_neg) {
+            (false, false) => (ad.wrapping_add(bc), false),
+            (true, true) => (ad.wrapping_add(bc), true),
+            (false, true) if ad >= bc => (ad.wrapping_sub(bc), false),
+            (false, true) => (bc.wrapping_sub(ad), true),
+            (true, false) if bc >= ad => (bc.wrapping_sub(ad), false),
+            (true, false) => (ad.wrapping_sub(bc), true),
+        };
+        Self {
+            numer,
+            denom: bd,
+            negative,
+        }
+    }
+
+    /// Compute `(self + other, self - other)` in one shot, sharing the three
+    /// cross-multiplications. Bit-for-bit equivalent to
+    /// `(self.add(other), self.sub(other))` but does 3 wide-multiplies instead
+    /// of 6 when the denominators differ. Results are unreduced, like `add`.
+    #[inline]
+    pub fn add_sub(&self, other: &Self) -> (Self, Self) {
+        // Sign of `-other`, matching `Ratio::neg` (zero keeps its sign).
+        let neg_other = if other.numer.is_zero_bool() {
+            other.negative
+        } else {
+            !other.negative
+        };
+
+        if self.denom == other.denom {
+            let (sn, sneg) = self.add_sub_numer(other);
+            let minus = Self {
+                numer: other.numer.clone(),
+                denom: other.denom.clone(),
+                negative: neg_other,
+            };
+            let (dn, dneg) = self.add_sub_numer(&minus);
+            return (
+                Self {
+                    numer: sn,
+                    denom: self.denom.clone(),
+                    negative: sneg,
+                },
+                Self {
+                    numer: dn,
+                    denom: self.denom.clone(),
+                    negative: dneg,
+                },
+            );
+        }
+
+        let (ad, ad_hi) = self.numer.mul_wide(&other.denom);
+        let (bc, bc_hi) = other.numer.mul_wide(&self.denom);
+        let (bd, bd_hi) = self.denom.mul_wide(&other.denom);
+
+        if ad_hi.is_zero_bool() && bc_hi.is_zero_bool() && bd_hi.is_zero_bool() {
+            let sum = Self::combine_cross(self.negative, other.negative, &ad, &bc, bd.clone());
+            let diff = Self::combine_cross(self.negative, neg_other, &ad, &bc, bd);
+            return (sum, diff);
+        }
+
+        // Rare wide-overflow: fall back to the exact (slow) paths.
+        (self.add(other), self.sub(other))
     }
 
     #[inline(always)]
@@ -574,6 +630,28 @@ impl<T: RatioInteger> Ratio<T> {
             } else {
                 (self.clone(), other.clone())
             };
+
+        // Integer-operand fast path: when one denominator is 1, the
+        // denom×denom product is just the other denom — skip that wide-multiply
+        // (one full-width multiply instead of two). Bit-identical result.
+        let self_denom_one = self_work.denom == T::ONE;
+        let other_denom_one = other_work.denom == T::ONE;
+        if self_denom_one || other_denom_one {
+            let (ac, ac_hi) = self_work.numer.mul_wide(&other_work.numer);
+            if ac_hi.is_zero_bool() {
+                let denom = if self_denom_one {
+                    other_work.denom.clone()
+                } else {
+                    self_work.denom.clone()
+                };
+                return Self {
+                    numer: ac,
+                    denom,
+                    negative,
+                };
+            }
+            // ac overflowed — fall through to the general (cross-cancel) path.
+        }
 
         let (ac, ac_hi) = self_work.numer.mul_wide(&other_work.numer);
         let (bd, bd_hi) = self_work.denom.mul_wide(&other_work.denom);
@@ -1135,5 +1213,61 @@ mod tests {
 
         let r640 = Ratio::<U640>::from_u64(3, 4);
         assert_eq!(r640.numer, U640::from_u64(3));
+    }
+
+    /// `add_sub` must be bit-for-bit equal to `(add, sub)` across signs,
+    /// equal/unequal denominators, and zero operands.
+    #[test]
+    fn test_add_sub_matches_add_and_sub() {
+        let mk = |n: u64, d: u64, neg: bool| {
+            Ratio::<U512>::new_raw(U512::from_u64(n), U512::from_u64(d), neg)
+        };
+        let cases = [
+            (mk(3, 4, false), mk(5, 6, false)),   // unequal denom
+            (mk(5, 6, false), mk(3, 4, false)),   // swapped
+            (mk(7, 8, true), mk(1, 2, false)),    // mixed signs
+            (mk(1, 2, false), mk(7, 8, true)),
+            (mk(9, 5, true), mk(9, 5, true)),     // equal denom, both neg
+            (mk(3, 4, false), mk(1, 4, false)),   // equal denom
+            (mk(5, 7, false), mk(0, 1, false)),   // other is zero
+            (mk(0, 1, false), mk(5, 7, true)),    // self is zero
+        ];
+        for (a, b) in cases {
+            let (sum, diff) = a.add_sub(&b);
+            let want_sum = Ratio::<U512>::add(&a, &b);
+            let want_diff = Ratio::<U512>::sub(&a, &b);
+            assert_eq!(
+                (sum.numer, sum.denom, sum.negative),
+                (want_sum.numer, want_sum.denom, want_sum.negative),
+                "add_sub sum mismatch"
+            );
+            assert_eq!(
+                (diff.numer, diff.denom, diff.negative),
+                (want_diff.numer, want_diff.denom, want_diff.negative),
+                "add_sub diff mismatch"
+            );
+        }
+    }
+
+    /// The integer-operand (`denom == 1`) fast path in `mul` must match the
+    /// general result.
+    #[test]
+    fn test_mul_integer_operand_fast_path() {
+        let frac = Ratio::<U512>::new_raw(U512::from_u64(7), U512::from_u64(9), false);
+        let three = Ratio::<U512>::from_u64(3, 1);
+        // 7/9 * 3/1 == 21/9 (unreduced), denom carried through unchanged.
+        let p = Ratio::<U512>::mul(&frac, &three);
+        assert_eq!(p.numer, U512::from_u64(21));
+        assert_eq!(p.denom, U512::from_u64(9));
+        assert!(!p.negative);
+        // Symmetric: 3/1 * 7/9.
+        let q = Ratio::<U512>::mul(&three, &frac);
+        assert_eq!(q.numer, U512::from_u64(21));
+        assert_eq!(q.denom, U512::from_u64(9));
+        // Both integers: 3/1 * 4/1 == 12/1.
+        let four = Ratio::<U512>::from_u64(4, 1);
+        let r = Ratio::<U512>::mul(&three, &four);
+        assert_eq!(r.numer, U512::from_u64(12));
+        assert_eq!(r.denom, U512::ONE);
     }
 }
