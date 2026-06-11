@@ -1,7 +1,7 @@
 [package]
 name = "crypto-ratio"
-version = "0.1.0"
-edition = "2021"  
+version = "0.2.0"
+edition = "2021"
 authors = ["Torben Poguntke <sbcdn@pm.me>"]
 license = "MIT OR Apache-2.0"
 description = "Rational number arithmetic using crypto-bigint"
